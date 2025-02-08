@@ -1,31 +1,36 @@
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
-const uri = process.env.MONGO_URI; // Load the connection string from the .env file
-const client = new MongoClient(uri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 400000, // 100 seconds timeout
-});
-
-
-const connectToDatabase = async (retryCount = 5) => {
-    try {
-        if (!client.topology || !client.topology.isConnected()) {
-            await client.connect();
-        }
-        console.log('Connected to MongoDB successfully');
-        return client.db();
-    } catch (error) {
-        if (retryCount === 0) {
-            console.error('Failed to connect to MongoDB after several attempts');
-            throw error;
-        }
-        console.log('Retrying connection...');
-        await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait for 5 seconds
-        return connectToDatabase(retryCount - 1);
+const connectToDatabase = async () => {
+  try {
+    if (!process.env.MONGO_URI) {
+      throw new Error('MONGO_URI is not defined in .env file');
     }
-};
 
+    console.log('🛠 Connecting to MongoDB:', process.env.MONGO_URI);
+
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ Using existing database connection');
+      return mongoose.connection.db; // ✅ Return the database object
+    }
+
+    await mongoose.connect(process.env.MONGO_URI,
+
+      {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
+    }
+    );
+
+    console.log('✅ MongoDB connected successfully');
+
+    // 🔹 Fix: Return the connected database object
+    return mongoose.connection.db; 
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error.message);
+    return null; // 🔹 Ensure it doesn't crash the app
+  }
+};
 
 module.exports = { connectToDatabase };

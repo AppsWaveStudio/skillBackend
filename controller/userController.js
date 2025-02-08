@@ -34,10 +34,14 @@ async function createUser(req, res) {
 
 async function login(req, res) {
     try {
-        console.log('Request body:', req.body); // Debugging statement
+        console.log('Request body:', req.body);
 
-        const db = await connectToDatabase();
-        const usersCollection = db.collection('users');
+        const db = await connectToDatabase(); // ✅ Now db is correctly returned
+        if (!db) {
+            throw new Error('Database connection failed'); // Extra safety check
+        }
+
+        const usersCollection = db.collection('users'); // ✅ This should work now
 
         const { email, password } = req.body;
 
@@ -62,6 +66,7 @@ async function login(req, res) {
         res.status(500).json({ message: 'Failed to login', error: error.message || error });
     }
 }
+
 
 
 async function getAuth(req, res) {

@@ -1,4 +1,5 @@
 const { MongoClient, ObjectId } = require('mongodb');
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -9,6 +10,11 @@ const routerPrivacy = require('./routes/privacyRoutes');
 const routerUserHistory = require('./routes/userHistory');
 const { updateTasks } = require('./controller/updatetasks');
 const routerUpdateTask = require('./routes/updatetask');
+const Coin = require('./models/coin'); // Adjust path if needed
+const routerCoins = require('./controller/coins'); // Ensure correct path
+const { connectToDatabase } = require('./db');
+
+
 
 require('dotenv').config();
 
@@ -18,32 +24,32 @@ const port = 3000;
 // Enable CORS
 app.use(cors());
 
+app.use(express.json()); // Required for parsing JSON request bodies
 
+// // MongoDB connection
+// const uri = process.env.MONGO_URI;
+// const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
-// MongoDB connection
-const uri = process.env.MONGO_URI;
-const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+// let db; // Store the database instance
 
-let db; // Store the database instance
+// const connectToDatabase = async () => {
+//   if (db) {
+//     console.log('✅ Using existing database connection');
+//     return db;
+//   }
 
-const connectToDatabase = async () => {
-  if (db) {
-    console.log('✅ Using existing database connection');
-    return db;
-  }
+//   try {
+//     console.log('⏳ Connecting to MongoDB...');
+//     await client.connect();
+//     db = client.db('test'); // Set the database instance
+//     console.log('✅ MongoDB connected successfully');
 
-  try {
-    console.log('⏳ Connecting to MongoDB...');
-    await client.connect();
-    db = client.db('test'); // Set the database instance
-    console.log('✅ MongoDB connected successfully');
-
-    return db;
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
-    process.exit(1); // Stop the server if DB connection fails
-  }
-};
+//     return db;
+//   } catch (error) {
+//     console.error('❌ Database connection failed:', error);
+//     process.exit(1); // Stop the server if DB connection fails
+//   }
+// };
 
 // -------------------------
 // ✅ POST: Create Post
@@ -230,21 +236,96 @@ app.get('/posts/:postId', async (req, res) => {
 
 
 
+app.post('/post/:id/comment', async (req, res) => {
+  try {
+    const { userId, username, text } = req.body;
+
+    if (!userId || !username || !text) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const db = await connectToDatabase();
+    const postsCollection = db.collection('posts');
+
+    // Convert post ID to ObjectId
+    const postId = new ObjectId(req.params.id);
+
+    // Find the post
+    const post = await postsCollection.findOne({ _id: postId });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // New comment object
+    const newComment = { userId, username, text, createdAt: new Date() };
+
+    // Update the post in MongoDB by pushing the comment
+    const updateResult = await postsCollection.updateOne(
+      { _id: postId },
+      { $push: { comments: newComment } }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(500).json({ error: 'Failed to add comment' });
+    }
+
+    console.log('Comment added to post:', newComment);
+    res.json({ message: 'Comment added successfully', comment: newComment });
+
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/post/:id/comments', async (req, res) => {
+  try {
+    const postId = req.params.id;
+
+    // Validate ObjectId format
+    if (!ObjectId.isValid(postId)) {
+      return res.status(400).json({ error: 'Invalid Post ID format' });
+    }
+
+    const db = await connectToDatabase();
+    const postsCollection = db.collection('posts');
+
+    // Convert to ObjectId
+    const post = await postsCollection.findOne({ _id: new ObjectId(postId) });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    res.json({ comments: post.comments || [] });
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+connectToDatabase();
+
+
+
+
+// -------------------------
+// ✅ Start the Server
+// -------------------------
+
 
 // Middleware
-app.use(express.json()); // Required for parsing JSON request bodies
+
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/auth', routerAuth);
 app.use('/api', routerPrivacy);
 app.use('/api', routerUserHistory);
 app.use('/api', routerUpdateTask);
+app.use('/api', routerCoins); // Make sure your routes are loaded after DB connection
 
-// -------------------------
-// ✅ Start the Server
-// -------------------------
-connectToDatabase().then(() => {
-  app.listen(port, () => {
-    console.log(`🚀 Server running at http://localhost:${port}`);
-  });
+// Start the server after MongoDB connection is established
+app.listen(port, () => {
+  console.log('🚀 Server running at http://localhost:3000');
 });
