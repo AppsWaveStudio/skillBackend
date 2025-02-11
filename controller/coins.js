@@ -66,22 +66,30 @@ routerCoin.get('/get-coins', async (req, res) => {
 // ✅ Deduct Coins
 routerCoin.post('/deduct-coins', async (req, res) => {
     try {
-      const { email, amount } = req.body;
-      const user = await User.findOne({ email: email });
-  
-      if (!user) return res.status(404).json({ error: 'User not found' });
-  
-      if (user.coins < amount) {
-        return res.status(400).json({ error: 'Not enough coins' });
-      }
-  
-      user.coins -= amount;
-      await user.save();
-  
-      res.json({ message: 'Coins deducted successfully', remainingCoins: user.coins });
+        const { email, amount } = req.body;
+
+        // Validate amount to ensure it's exactly 10 coins
+        if (amount !== 10) {
+            return res.status(400).json({ error: 'Invalid deduction amount' });
+        }
+
+        const user = await User.findOne({ email: email });
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        if (user.coins < amount) {
+            return res.status(400).json({ error: 'Not enough coins' });
+        }
+
+        // Deduct exactly 10 coins
+        user.coins -= 10;
+        await user.save();
+
+        res.json({ message: 'Coins deducted successfully', remainingCoins: user.coins });
     } catch (error) {
-      res.status(500).json({ error: 'Server error' });
+        res.status(500).json({ error: 'Server error' });
     }
-  });
+});
+
 
 module.exports = routerCoin;

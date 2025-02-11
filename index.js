@@ -13,7 +13,7 @@ const routerUpdateTask = require('./routes/updatetask');
 const Coin = require('./models/coin'); // Adjust path if needed
 const routerCoins = require('./controller/coins'); // Ensure correct path
 const { connectToDatabase } = require('./db');
-
+const stripe = require('stripe')('sk_test_51QaHvKAyPgLzfJS8hged893Tb7ZeeZPo4VylduXZlhVQoTTuj1ZoZ6s2M0RQItc46Z9gvZqanzYnASiRVJGmxBdq00Ipz4jrPM'); // Replace with your secret key
 
 
 require('dotenv').config();
@@ -304,6 +304,79 @@ app.get('/post/:id/comments', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+
+
+app.post('/pay-without-webhooks', async (req, res) => {
+  const { paymentMethodId, currency, items, amount } = req.body;
+
+  if (!paymentMethodId || !currency || !items || !amount) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    console.log('Received amount from frontend:', amount); // Debugging
+
+    // Create a PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,  // No need to multiply by 100 again
+      currency: currency,
+      payment_method: paymentMethodId,
+      automatic_payment_methods: { enabled: true },
+      confirm: true,
+    });
+
+    console.log('PaymentIntent created:', paymentIntent.id);
+
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error('Error creating PaymentIntent:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+// Endpoint to confirm payment
+app.post('/confirm-payment', async (req, res) => {
+  const { paymentIntentId } = req.body;
+
+  if (!paymentIntentId) {
+    return res.status(400).json({ error: 'Missing paymentIntentId' });
+  }
+
+  try {
+    // Fetch the PaymentIntent to check its status
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (paymentIntent.status === 'succeeded') {
+      return res.json({ success: true }); // If it's already succeeded, no need to confirm again
+    }
+
+    // If not succeeded, attempt to confirm the payment
+    const confirmedPaymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+      return_url: 'https://your-website.com/payment-success', // Replace with your actual return URL
+    });
+
+    if (confirmedPaymentIntent.status === 'succeeded') {
+      res.json({ success: true });
+    } else if (confirmedPaymentIntent.status === 'requires_action') {
+      res.json({
+        requiresAction: true,
+        paymentIntentId: confirmedPaymentIntent.id,
+        nextAction: confirmedPaymentIntent.next_action,
+      });
+    } else {
+      res.json({ error: 'Payment did not succeed' });
+    }
+  } catch (error) {
+    console.error('Error confirming PaymentIntent:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 connectToDatabase();
 
